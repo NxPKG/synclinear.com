@@ -74,7 +74,6 @@ export const getLinearWebhook = async (token: string, teamName: string) => {
             nodes {
                 url
                 id
-                resourceTypes
                 team {
                     name
                 }
@@ -89,7 +88,8 @@ export const getLinearWebhook = async (token: string, teamName: string) => {
     }
 
     const webhook = response.data.webhooks?.nodes?.find(
-        w => w.url === callbackURL && w.team?.name === teamName
+        webhook =>
+            webhook.url === callbackURL && webhook.team?.name === teamName
     );
 
     return webhook;
@@ -138,6 +138,10 @@ export const updateLinearWebhook = async (
         }
     }`;
 
+    console.log({
+        webhookId: webhook.id,
+        input: updates
+    })
     return await linearQuery(mutation, token, {
         webhookId: webhook.id,
         input: updates
@@ -173,6 +177,108 @@ export const createLinearLabel = async (
     });
 };
 
+export const getLinearCycle = async (
+    token: string,
+    cycleId: string
+): Promise<{
+    data: {
+        cycle: {
+            name: string;
+            description: string;
+            number: number;
+            endsAt: string;
+        };
+    };
+}> => {
+    const query = `query GetCycle($cycleId: String!) {
+        cycle(id: $cycleId) {
+            name
+            description
+            number
+            endsAt
+        }
+    }`;
+
+    return await linearQuery(query, token, { cycleId });
+};
+
+export const createLinearCycle = async (
+    token: string,
+    teamId: string,
+    title: string,
+    description?: string,
+    endDate?: Date
+): Promise<{
+    data: { cycleCreate: { success: boolean; cycle: { id: string } } };
+}> => {
+    const mutation = `mutation CreateCycle(
+        $teamId: String!,
+        $title: String!,
+        $description: String,
+        $startsAt: DateTime!,
+        $endsAt: DateTime!
+    ) {
+        cycleCreate(
+            input: {
+                name: $title,
+                description: $description,
+                teamId: $teamId,
+                startsAt: $startsAt,
+                endsAt: $endsAt
+            }
+        ) {
+            success
+            cycle {
+                id
+            }
+        }
+    }`;
+
+    return await linearQuery(mutation, token, {
+        teamId,
+        title,
+        ...(description && { description }),
+        ...(endDate && { endsAt: endDate }),
+        startsAt: new Date()
+    });
+};
+
+export const updateLinearCycle = async (
+    token: string,
+    cycleId: string,
+    name?: string,
+    description?: string,
+    endDate?: Date
+): Promise<{
+    data: { cycleUpdate: { success: boolean } };
+}> => {
+    const mutation = `mutation UpdateCycle(
+        $cycleId: String!,
+        $name: String,
+        $description: String,
+        $endsAt: DateTime
+    ) {
+        cycleUpdate(
+            id: $cycleId,
+            input: {
+                name: $name,
+                description: $description,
+                endsAt: $endsAt
+            }
+        ) {
+            success
+        }
+    }`;
+
+    return await linearQuery(mutation, token, {
+        cycleId,
+        // Only include the fields that are defined to avoid server error
+        ...(name && { name }),
+        ...(description && { description }),
+        ...(endDate && { endsAt: endDate })
+    });
+};
+
 export const saveLinearContext = async (
     token: string,
     team: LinearTeam,
@@ -204,9 +310,9 @@ export const saveLinearContext = async (
         teamId: team.id,
         teamName: team.name,
         publicLabelId: publicLabel?.id,
-        toDoStateId: stateLabels.todo?.id,
-        doneStateId: stateLabels.done?.id,
-        canceledStateId: stateLabels.canceled?.id
+        toDoStateId: stateLabels["todo"]?.id,
+        doneStateId: stateLabels["done"]?.id,
+        canceledStateId: stateLabels["canceled"]?.id
     };
 
     const response = await fetch("/api/linear/save", {
@@ -219,7 +325,7 @@ export const saveLinearContext = async (
 
 export const exchangeLinearToken = async (
     refreshToken: string
-): Promise<{ access_token?: string }> => {
+): Promise<any> => {
     const redirectURI = window.location.origin;
 
     const response = await fetch("/api/linear/token", {
@@ -235,7 +341,7 @@ export const checkTeamWebhook = async (
     teamId: string,
     teamName: string,
     token: string
-): Promise<{ teamInDB?: boolean; webhookExists?: boolean }> => {
+): Promise<any> => {
     const response = await fetch("/api/linear/webhook", {
         method: "POST",
         headers: {
@@ -267,7 +373,7 @@ export const inviteMember = async (
         getSyncFooter()
     ].join("\n");
 
-    linearClient.createIssue({
+    linearClient.issueCreate({
         title: `GitHub Sync — ${issueCreator.name}, please join our workspace`,
         description: message,
         teamId: teamId,
@@ -278,4 +384,3 @@ export const inviteMember = async (
 export const generateLinearUUID = (): string => {
     return `${uuid().substring(0, 28)}${GITHUB.UUID_SUFFIX}`;
 };
-
